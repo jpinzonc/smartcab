@@ -23,9 +23,9 @@ class LearningAgent(Agent):
         ## TO DO ##
         ###########
         # Set any additional class parameters as needed
-        self.num_train = 0
-
-
+        self.num_train = 0 # Keeps track of the number of trials. It is updated in the reset function
+        self.const_a = 0.01 # a value for the decaying formula. 
+        
     def reset(self, destination=None, testing=False):
         """ The reset function is called at the beginning of each trial.
             'testing' is set to True if testing trials are being used
@@ -44,15 +44,10 @@ class LearningAgent(Agent):
         	self.epsilon, self.alpha = 0, 0
         else:
           	#self.epsilon = self.epsilon -0.05 # Q7
-        	# Trying other decaying functions
+        	# Decaying function:
         	self.num_train = self.num_train + 1.0
-        	#self.epsilon = 1/(self.num_train**2)
-        	#self.epsilon = self.alpha**self.num_train
-        	#self.epsilon = math.exp(-1*self.alpha*self.num_train)
-        	#self.epsilon = 0.999**(100*self.num_train)
-        	#self.epsilon = math.fabs(math.cos(self.alpha*self.num_train))/(self.num_train**2)
-        	#self.epsilon = 1.0/(self.num_train**2 - self.alpha*self.num_train)
-        	self.epsilon = math.fabs(math.cos(self.alpha*self.num_train))
+        	self.epsilon = abs(math.cos(self.const_a*self.num_train))
+        
         return None
 
     def build_state(self):
@@ -73,9 +68,10 @@ class LearningAgent(Agent):
         # Because the aim of this project is to teach Reinforcement Learning, we have placed 
         # constraints in order for you to learn how to adjust epsilon and alpha, and thus learn about the balance between exploration and exploitation.
         # With the hand-engineered features, this learning process gets entirely negated.
-        
         # Set 'state' as a tuple of relevant data for the agent        
         state = (waypoint, inputs['light'], inputs['oncoming'])
+        # I decided to use light and oncoming traffic as state options for this model
+        
         return state
 
     def get_maxQ(self, state):
@@ -86,12 +82,11 @@ class LearningAgent(Agent):
         ## TO DO ##
         ###########
         # Calculate the maximum Q-value of all actions for a given state
-
-    	#maxQ = random.random()*-1
-    	maxQ = max(self.Q[state].values())
-        for action in self.Q[state]:
-            if maxQ < self.Q[state][action]:
-                maxQ = self.Q[state][action]
+    	maxQ = random.random()*-1
+    	max_sval = max(self.Q[state].values())
+    	if max_sval > maxQ:
+    		maxQ = max_sval
+        
         return maxQ
 
     def createQ(self, state):
@@ -101,15 +96,17 @@ class LearningAgent(Agent):
         ## TO DO ##
         ###########
         # When learning, check if the 'state' is not in the Q-table
+        if self.learning:
+        	if state not in self.Q.keys():
+        	
         # If it is not, create a new dictionary for that state
         #   Then, for each action available, set the initial Q-value to 0.0
-        if self.learning:
-            if not self.Q.has_key(state):
-                valid_actions = Environment.valid_actions
-                action_scores = dict(zip(valid_actions, [0.0]*len(valid_actions)))
-                self.Q[state] = action_scores
-        return
+        		new_state_dict = {}
+        		for action in Environment.valid_actions:
+        			new_state_dict[action] = 0.0
+        		self.Q[state] = new_state_dict
 
+        return
 
     def choose_action(self, state):
         """ The choose_action function is called when the agent is asked to choose
@@ -123,26 +120,29 @@ class LearningAgent(Agent):
         ########### 
         ## TO DO ##
         ###########
+        valid_actions = self.valid_actions
+        n_list= []
         # When not learning, choose a random action
+        if not self.learning:
+        	action = random.choice(valid_actions)
+
         # When learning, choose a random action with 'epsilon' probability
+        else:
+            if self.epsilon > random.random():
+            # From : 
+            # https://rubenfiszel.github.io/posts/rl4j/2016-08-24-Reinforcement-Learning-and-DQN.html
+                action = random.choice(valid_actions)
+                
         # Otherwise, choose an action with the highest Q-value for the current state
         # Be sure that when choosing an action with highest Q-value that you randomly select between actions that "tie".
-        if not self.learning:
-        	action = random.choice(self.valid_actions)
-        else:
-            if self.epsilon > 0.01 and self.epsilon > random.random():
-                action = random.choice(self.valid_actions)
             else:
-                valid_actions = []
-                maxQ = self.get_maxQ(state)
-                for act in self.Q[state]:
-                    if maxQ == self.Q[state][act]:
-                        valid_actions.append(act)
-                        action = random.choice(valid_actions)
-		# I used the https://github.com/diyjac/smartcab/blob/master/agent.py
-		# to improve this part of this function. 
+            	for decission, value in self.Q[state].iteritems():
+            		maximo = max(self.Q[state].values())
+            		if value == maximo:
+            			n_list.append(decission)
+            			action = random.choice(n_list)
+
         return action       
-        
 
     def learn(self, state, action, reward):
         """ The learn function is called after the agent completes an action and
@@ -156,9 +156,11 @@ class LearningAgent(Agent):
         #   Use only the learning rate 'alpha' (do not use the discount factor 'gamma')
         if self.learning:
 			self.Q[state][action] = self.Q[state][action] + (self.alpha * (reward-self.Q[state][action]))  		
-		
+		# Formula modified from: 
+		#https://medium.com/towards-data-science/practical-reinforcement-learning-02-getting-started-with-q-learning-582f63e4acd9
+		# the modification corresponded to the removal of the (gamma+max(self.Q[state][action]) component of the equation
+		# as suggested by the instructions. 
         return
-
 
     def update(self):
         """ The update function is called when a time step is completed in the 
@@ -173,7 +175,6 @@ class LearningAgent(Agent):
 
         return
         
-
 def run():
     """ Driving function for running the simulation. 
         Press ESC to close the simulation, or [SPACE] to pause the simulation. """
@@ -222,7 +223,6 @@ def run():
     #   tolerance  - epsilon tolerance before beginning testing, default is 0.05 
     #   n_test     - discrete number of testing trials to perform, default is 0
     sim.run(n_test = 10, tolerance = 0.05)
-
 
 if __name__ == '__main__':
     run()
